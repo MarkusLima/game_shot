@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Teste DeviceOrientationEvent</title>
+</head>
+<body>
+  <h1>Teste Sensor de Movimento</h1>
+  <button onclick="ativarSensores()">Ativar Sensor</button>
+  <button onclick="calibrar()">Calibrar Mira</button>
+  <pre id="output">Clique no botão acima para ativar os sensores.</pre>
+
+  <script>
+    let socket;
+    let referencia = null;
+
+    function ativarSensores() {
+      const output = document.getElementById("output");
+
+      // Conexão WebSocket
+      socket = new WebSocket('wss://192.168.147.188:3000'); // Altere para IP correto
+
+      socket.onopen = () => {
+        output.textContent = "✅ Conectado ao WebSocket\n";
+      };
+
+      socket.onerror = (error) => {
+        output.textContent += "❌ Erro na conexão WebSocket\n";
+        console.error('Erro WebSocket:', error);
+      };
+
+      socket.onclose = () => {
+        output.textContent += "⚠️ Conexão WebSocket encerrada\n";
+      };
+
+      // Verifica suporte
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        // iOS (Safari)
+        DeviceOrientationEvent.requestPermission()
+          .then(permissionState => {
+            if (permissionState === "granted") {
+              ativarListener();
+            } else {
+              output.textContent += "❌ Permissão negada para acessar sensores";
+            }
+          })
+          .catch(console.error);
+      } else if (typeof DeviceOrientationEvent !== "undefined") {
+        // Android ou navegadores com permissão automática
+        ativarListener();
+      } else {
+        output.textContent += "❌ DeviceOrientationEvent NÃO SUPORTADO";
+      }
+    }
+
+    function calibrar() {
+      if (ultimoEvento) {
+        referencia = {
+          beta: ultimoEvento.beta,
+          gamma: ultimoEvento.gamma
+        };
+
+        if ("vibrate" in navigator) {
+          navigator.vibrate(200); // vibra por 200ms
+          console.log("✅ Vibração ativada na calibração");
+        } else {
+          console.log("❌ Vibração não suportada no dispositivo");
+          alert("📌 Mira calibrada!");
+        }   
+       
+      }
+    }
+
+    let ultimoEvento = null;
+
+    function ativarListener() {
+      const output = document.getElementById("output");
+
+      window.addEventListener("deviceorientation", function(event) {
+        ultimoEvento = event;
+
+        if (!referencia) {
+          output.textContent = "ℹ️ Aponte para a TV e clique em Calibrar.";
+          return;
+        }
+
+        const delta = {
+          x: event.gamma - referencia.gamma, // lateral
+          y: event.beta - referencia.beta    // vertical
+        };
+
+        output.textContent = `
+        🎯 Posição relativa:
+        x (gamma): ${delta.x.toFixed(2)}
+        y (beta): ${delta.y.toFixed(2)}
+        `;
+
+        // Envia via WebSocket se conectado
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(delta));
+        }
+      });
+    }
+  </script>
+</body>
+</html>
