@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Controle - Mira</title>
+</head>
+<body>
+  <h1>Controle de Mira</h1>
+  <button onclick="ativarSensores()">Ativar Sensor</button>
+  <button onclick="calibrar()">Calibrar Mira</button>
+  <pre id="output">Clique no botão acima para ativar os sensores.</pre>
+
+  <script>
+    let socket;
+    let referencia = null;
+    let ultimoEvento = null;
+
+    function ativarSensores() {
+      const output = document.getElementById("output");
+
+      socket = new WebSocket('wss://192.168.1.108:3000');
+
+      socket.onopen = () => {
+        output.textContent = "✅ Conectado ao WebSocket\n";
+      };
+
+      socket.onerror = (error) => {
+        output.textContent += "❌ Erro na conexão WebSocket\n";
+        console.error('Erro WebSocket:', error);
+      };
+
+      socket.onclose = () => {
+        output.textContent += "⚠️ Conexão WebSocket encerrada\n";
+      };
+
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        DeviceOrientationEvent.requestPermission()
+          .then(permissionState => {
+            if (permissionState === "granted") {
+              ativarListener();
+            } else {
+              output.textContent += "❌ Permissão negada para sensores";
+            }
+          })
+          .catch(console.error);
+      } else if (typeof DeviceOrientationEvent !== "undefined") {
+        ativarListener();
+      } else {
+        output.textContent += "❌ DeviceOrientationEvent NÃO SUPORTADO";
+      }
+    }
+
+    function calibrar() {
+      if (ultimoEvento) {
+        referencia = {
+          beta: ultimoEvento.beta,
+          gamma: ultimoEvento.gamma
+        };
+
+        if ("vibrate" in navigator) {
+          navigator.vibrate(200);
+          console.log("✅ Calibrado com vibração");
+        } else {
+          alert("📌 Mira calibrada!");
+        }
+      }
+    }
+
+    function ativarListener() {
+      const output = document.getElementById("output");
+
+      window.addEventListener("deviceorientation", function(event) {
+        ultimoEvento = event;
+
+        if (!referencia) {
+          output.textContent = "ℹ️ Aponte para a TV e clique em Calibrar.";
+          return;
+        }
+
+        const delta = {
+          x: event.gamma - referencia.gamma,
+          y: event.beta - referencia.beta
+        };
+
+        output.textContent = `🎯 Mira:\nx: ${delta.x.toFixed(2)}\ny: ${delta.y.toFixed(2)}`;
+
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(delta));
+        }
+      });
+    }
+  </script>
+</body>
+</html>
